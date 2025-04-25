@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 # Load environment variables
 openai.api_key = os.getenv("OPENAI_API_KEY")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
+VERIFY_TOKEN = "Razen"
 
 # Global store
 message_log_dict = {}
