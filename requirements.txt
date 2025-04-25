@@ -5,3 +5,4 @@ pydub
 soundfile
 SpeechRecognition
 gunicorn
+libsndfile1
