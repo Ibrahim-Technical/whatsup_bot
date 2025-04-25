@@ -165,16 +165,19 @@ def webhook():
         return "Unauthorized", 403
 
     elif request.method == "POST":
-        # Check Content-Type
-        if request.content_type != 'application/json':
+        # Check Content-Type and handle accordingly
+        if request.content_type == 'application/json':
+            request_data = request.get_json()
+            logging.info(f"Received JSON data: {request_data}")
+        elif request.content_type == 'application/x-www-form-urlencoded':
+            # Parse form data as JSON-like structure
+            request_data = json.loads(request.form.get('payload', '{}'))
+            logging.info(f"Received form data: {request_data}")
+        else:
             logging.error(f"Unsupported Content-Type: {request.content_type}")
             return jsonify({"error": "Unsupported Media Type"}), 415
         
         try:
-            # Log the incoming request data for debugging
-            request_data = request.get_json()
-            logging.info(f"Received data: {request_data}")
-
             handle_message(request_data)
             return jsonify({"status": "ok"}), 200
         except Exception as e:
@@ -188,4 +191,3 @@ if __name__ == "__main__":
         debug=True,
         use_reloader=False
     )
-
