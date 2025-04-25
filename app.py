@@ -165,6 +165,9 @@ def webhook():
         return "Unauthorized", 403
 
     elif request.method == "POST":
+        # Log the full request body for debugging purposes
+        logging.info(f"Full request body: {request.data}")
+        
         # Check Content-Type and handle accordingly
         if request.content_type == 'application/json':
             request_data = request.get_json()
