@@ -100,55 +100,35 @@ def send_whatsapp_message(to, msg, phone_number_id):
 
 # Handle incoming messages
 def handle_message(req_data):
-    try:
-        # Check if expected keys are in the data
-        if "entry" not in req_data:
-            logging.error(f"Invalid webhook data: {req_data}")
-            return
-        
-        value = req_data["entry"][0].get("changes", [{}])[0].get("value", {})
-        messages = value.get("messages", [])
-        
-        if not messages:
-            logging.error(f"No messages found in the data: {req_data}")
-            return
+    value = req_data["entry"][0]["changes"][0]["value"]
+    message = value["messages"][0]
+    from_number = message["from"]
+    phone_number_id = value["metadata"]["phone_number_id"]
+    config = load_client_config(from_number)
 
-        message = messages[0]  # Assuming one message per request
-        from_number = message.get("from", "")
-        phone_number_id = value.get("metadata", {}).get("phone_number_id", "")
+    if message["type"] == "text":
+        msg_text = message["text"]["body"].strip().lower()
 
-        config = load_client_config(from_number)
-
-        if message.get("type") == "text":
-            msg_text = message["text"].get("body", "").strip().lower()
-
-            # Check for custom command
-            if msg_text in config["custom_commands"]:
-                reply = config["custom_commands"][msg_text]
-            elif msg_text in ["hi", "hello", "السلام عليكم", "هلا"]:
-                reply = config["greeting"]
-            else:
-                reply = get_ai_response(msg_text, from_number)
-
-        elif message.get("type") == "audio":
-            audio_id = message["audio"].get("id", "")
-            if audio_id:
-                url = get_media_url(audio_id)
-                bytes_data = download_media(url)
-                audio_data = convert_audio(bytes_data)
-                lang = detect_language(from_number)
-                text = recognize_audio(audio_data, lang)
-                reply = get_ai_response(text, from_number)
-            else:
-                reply = "🤖 Audio message is missing an ID."
-
+        # Check for custom command
+        if msg_text in config["custom_commands"]:
+            reply = config["custom_commands"][msg_text]
+        elif msg_text in ["hi", "hello", "السلام عليكم", "هلا"]:
+            reply = config["greeting"]
         else:
-            reply = "🤖 Sorry, I can only process text and audio messages right now."
+            reply = get_ai_response(msg_text, from_number)
 
-        send_whatsapp_message(from_number, reply, phone_number_id)
+    elif message["type"] == "audio":
+        audio_id = message["audio"]["id"]
+        url = get_media_url(audio_id)
+        bytes_data = download_media(url)
+        audio_data = convert_audio(bytes_data)
+        lang = detect_language(from_number)
+        text = recognize_audio(audio_data, lang)
+        reply = get_ai_response(text, from_number)
+    else:
+        reply = "🤖 Sorry, I can only process text and audio messages right now."
 
-    except Exception as e:
-        logging.error(f"Error in handle_message: {e}")
+    send_whatsapp_message(from_number, reply, phone_number_id)
 
 # Flask routes
 @app.route("/", methods=["GET"])
@@ -163,19 +143,9 @@ def webhook():
         if token == VERIFY_TOKEN:
             return challenge, 200
         return "Unauthorized", 403
-
     elif request.method == "POST":
-        # Check Content-Type
-        if request.content_type != 'application/json':
-            logging.error(f"Unsupported Content-Type: {request.content_type}")
-            return jsonify({"error": "Unsupported Media Type"}), 415
-        
         try:
-            # Log the incoming request data for debugging
-            request_data = request.get_json()
-            logging.info(f"Received data: {request_data}")
-
-            handle_message(request_data)
+            handle_message(request.get_json())
             return jsonify({"status": "ok"}), 200
         except Exception as e:
             logging.error(f"Webhook error: {e}")
@@ -188,4 +158,3 @@ if __name__ == "__main__":
         debug=True,
         use_reloader=False
     )
-
