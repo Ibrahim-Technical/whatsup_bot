@@ -17,10 +17,14 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 VERIFY_TOKEN = "Razen"
 
-# Global store
+# Vonage API credentials
+VONAGE_API_KEY = '8b2f518b'
+VONAGE_API_SECRET = 'UdYiHXY0jxDAkfWO'
+
+# Global store for message logs
 message_log_dict = {}
 
-# Load client configs
+# Load client configurations from JSON
 def load_client_config(phone_number):
     config_path = f"configs/{phone_number}.json"
     if os.path.exists(config_path):
@@ -31,7 +35,7 @@ def load_client_config(phone_number):
         "custom_commands": {}
     }
 
-# Log handling
+# Log handling for messages
 def update_message_log(message, phone, role):
     if phone not in message_log_dict:
         message_log_dict[phone] = [{"role": "system", "content": "You are a helpful assistant."}]
@@ -42,7 +46,7 @@ def remove_last_message(phone):
     if phone in message_log_dict:
         message_log_dict[phone].pop()
 
-# AI Response
+# AI Response from OpenAI
 def get_ai_response(message, phone):
     try:
         log = update_message_log(message, phone, "user")
@@ -59,7 +63,7 @@ def get_ai_response(message, phone):
         remove_last_message(phone)
         return "⚠️ Sorry, AI is unavailable right now."
 
-# Audio processing
+# Audio processing for voice messages
 def get_media_url(media_id):
     url = f"https://graph.facebook.com/v16.0/{media_id}/"
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
@@ -83,25 +87,39 @@ def detect_language(phone):
         return "ar-SA"
     return "en-US"
 
-# Send WhatsApp message
-def send_whatsapp_message(to, msg, phone_number_id):
-    url = f"https://graph.facebook.com/v17.0/{phone_number_id}/messages"
+# Send WhatsApp message using Vonage Messages API
+def send_whatsapp_message(to_number, from_number="14157386102"):
+    # Vonage API URL for sending WhatsApp messages
+    url = "https://messages-sandbox.nexmo.com/v1/messages"
+    
+    # Headers for the request
     headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
     }
+    
+    # Message data
     data = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "text",
-        "text": {"body": msg}
+        "from": from_number,
+        "to": to_number,
+        "message_type": "text",
+        "text": "This is a WhatsApp message sent from the Messages API",
+        "channel": "whatsapp"
     }
-    requests.post(url, headers=headers, json=data)
+    
+    # Send POST request to Vonage API
+    response = requests.post(url, headers=headers, auth=(VONAGE_API_KEY, VONAGE_API_SECRET), json=data)
+    
+    if response.status_code == 200:
+        logging.info(f"Message sent successfully to {to_number}")
+        logging.info(response.json())  # Print the response from Vonage
+    else:
+        logging.error(f"Failed to send message. Status code: {response.status_code}")
+        logging.error(response.text)  # Print the error message if failed
 
-# Handle incoming messages
+# Handle incoming messages from Vonage
 def handle_message(req_data):
     try:
-        # Check if expected keys are in the data
         if "entry" not in req_data:
             logging.error(f"Invalid webhook data: {req_data}")
             return
@@ -113,7 +131,7 @@ def handle_message(req_data):
             logging.error(f"No messages found in the data: {req_data}")
             return
 
-        message = messages[0]  # Assuming one message per request
+        message = messages[0]
         from_number = message.get("from", "")
         phone_number_id = value.get("metadata", {}).get("phone_number_id", "")
 
@@ -122,7 +140,6 @@ def handle_message(req_data):
         if message.get("type") == "text":
             msg_text = message["text"].get("body", "").strip().lower()
 
-            # Check for custom command
             if msg_text in config["custom_commands"]:
                 reply = config["custom_commands"][msg_text]
             elif msg_text in ["hi", "hello", "السلام عليكم", "هلا"]:
@@ -165,15 +182,12 @@ def webhook():
         return "Unauthorized", 403
 
     elif request.method == "POST":
-        # Log the full request body for debugging purposes
         logging.info(f"Full request body: {request.data}")
         
-        # Check Content-Type and handle accordingly
         if request.content_type == 'application/json':
             request_data = request.get_json()
             logging.info(f"Received JSON data: {request_data}")
         elif request.content_type == 'application/x-www-form-urlencoded':
-            # Parse form data as JSON-like structure
             request_data = json.loads(request.form.get('payload', '{}'))
             logging.info(f"Received form data: {request_data}")
         else:
@@ -186,6 +200,22 @@ def webhook():
         except Exception as e:
             logging.error(f"Webhook error: {e}")
             return jsonify({"error": str(e)}), 500
+
+# Delivery receipt route (DLR)
+@app.route("/delivery", methods=["POST"])
+def delivery():
+    delivery_data = request.get_json()  # Assuming JSON format
+    logging.info(f"Delivery receipt: {delivery_data}")
+    return jsonify({"status": "received"}), 200
+
+# Inbound SMS route
+@app.route("/inbound", methods=["POST"])
+def inbound_sms():
+    data = request.form
+    from_number = data.get('msisdn')  # The sender's phone number
+    text_message = data.get('text')   # The message content
+    logging.info(f"Received SMS from {from_number}: {text_message}")
+    return jsonify({"status": "received"}), 200
 
 if __name__ == "__main__":
     app.run(
