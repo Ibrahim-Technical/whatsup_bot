@@ -20,7 +20,7 @@ VERIFY_TOKEN = "Razen"
 
 # Global store
 message_log_dict = {}
-
+RUN apt-get update && apt-get install -y libsndfile1
 # Load client configs
 def load_client_config(phone_number):
     config_path = f"configs/{phone_number}.json"
